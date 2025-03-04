@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ego-tree = "0.10.0"
+html5ever = { workspace = true }
+string_cache = { workspace = true }
