@@ -3,14 +3,14 @@ use std::{
     cell::{Ref, RefCell},
 };
 
-use ego_tree::NodeId;
+use dom::NodeId;
 use html5ever::{
     QualName,
     interface::{ElementFlags, NodeOrText, QuirksMode, TreeSink},
     tendril::StrTendril,
 };
 
-use crate::{Document, ElementData, Node};
+use dom::{Document, ElementData, Node};
 
 pub(crate) struct Sink {
     pub document: RefCell<Document>,

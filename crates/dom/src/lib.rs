@@ -9,16 +9,14 @@ use html5ever::{
 };
 use string_cache::DefaultAtom;
 
-pub mod parser;
-pub(crate) mod sink;
-pub(crate) mod tokenizer;
+pub use ego_tree::NodeId;
 
 pub type Atom = DefaultAtom;
 
 #[derive(Debug)]
 pub struct Document {
-    tree: Tree<Node>,
-    quirks_mode: QuirksMode,
+    pub tree: Tree<Node>,
+    pub quirks_mode: QuirksMode,
 }
 
 impl Document {
@@ -101,14 +99,14 @@ pub enum Node {
 }
 
 impl Node {
-    fn as_element(&self) -> Option<&ElementData> {
+    pub fn as_element(&self) -> Option<&ElementData> {
         match self {
             Node::Element(data) => Some(data),
             _ => None,
         }
     }
 
-    fn as_element_mut(&mut self) -> Option<&mut ElementData> {
+    pub fn as_element_mut(&mut self) -> Option<&mut ElementData> {
         match self {
             Node::Element(data) => Some(data),
             _ => None,

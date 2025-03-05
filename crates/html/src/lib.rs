@@ -1,14 +1,54 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+mod sink;
+
+use crate::sink::Sink;
+use dom::{Document, NodeId};
+use html5ever::{
+    Parser,
+    tendril::TendrilSink,
+    tokenizer::{BufferQueue, Tokenizer as HtmlTokenizer, TokenizerOpts},
+    tree_builder::{TreeBuilder, TreeBuilderOpts},
+};
+use std::cell::RefCell;
+use std::ops::{Deref, DerefMut};
+
+pub fn parse_html_document(input: &str) -> Document {
+    let document = RefCell::from(Document::default());
+    let sink = Sink { document };
+
+    let tokenizer = Tokenizer::new(sink);
+
+    let parser = Parser::<Sink> {
+        tokenizer: tokenizer.inner,
+        input_buffer: BufferQueue::default(),
+    };
+
+    parser.one(input)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) struct Tokenizer {
+    pub inner: HtmlTokenizer<TreeBuilder<NodeId, Sink>>,
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl Tokenizer {
+    pub fn new(sink: Sink) -> Self {
+        let tree_builder = TreeBuilder::new(sink, TreeBuilderOpts::default());
+
+        Self {
+            inner: HtmlTokenizer::new(tree_builder, TokenizerOpts::default()),
+        }
+    }
+}
+
+impl Deref for Tokenizer {
+    type Target = HtmlTokenizer<TreeBuilder<NodeId, Sink>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for Tokenizer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }

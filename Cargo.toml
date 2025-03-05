@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/dom", "crates/html"]
+members = [ "crates/browser","crates/dom", "crates/html"]
 
 [workspace.dependencies]
 html5ever = "0.29.1"
