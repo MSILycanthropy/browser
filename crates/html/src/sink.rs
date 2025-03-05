@@ -1,19 +1,66 @@
-use std::{
-    borrow::Cow,
-    cell::{Ref, RefCell},
+use dom::{
+    Document, Node, NodeId,
+    node::{Element, NodeData},
 };
-
-use dom::NodeId;
 use html5ever::{
     QualName,
     interface::{ElementFlags, NodeOrText, QuirksMode, TreeSink},
     tendril::StrTendril,
 };
-
-use dom::{Document, ElementData, Node};
+use std::{
+    borrow::Cow,
+    cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
+};
 
 pub(crate) struct Sink {
-    pub document: RefCell<Document>,
+    pub(crate) document: RefCell<Document>,
+}
+
+impl Sink {
+    fn document(&self) -> Ref<Document> {
+        self.document.borrow()
+    }
+
+    fn document_mut(&self) -> RefMut<Document> {
+        self.document.borrow_mut()
+    }
+
+    fn node(&self, id: NodeId) -> Ref<Node> {
+        Ref::map(self.document(), |document| {
+            document.node(id).expect("Node handle is invalid")
+        })
+    }
+
+    fn node_mut(&self, id: NodeId) -> RefMut<Node> {
+        RefMut::map(self.document_mut(), |document| {
+            document.node_mut(id).expect("Node handle is invalid")
+        })
+    }
+
+    fn insert_node(&self, data: NodeData) -> NodeId {
+        self.document_mut().insert_node(data)
+    }
+
+    fn append_to(&self, parent_id: NodeId, new_child_id: NodeId) {
+        self.document_mut().append_to(parent_id, new_child_id);
+    }
+
+    fn try_append_text(&self, to_id: Option<NodeId>, text: &StrTendril) -> bool {
+        let Some(to_id) = to_id else { return false };
+        let mut document = self.document_mut();
+        let Some(node) = document.node_mut(to_id) else {
+            return false;
+        };
+
+        match node.data_mut() {
+            NodeData::Text(original) => {
+                original.push_tendril(text);
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 impl TreeSink for Sink {
@@ -30,22 +77,24 @@ impl TreeSink for Sink {
     }
 
     fn set_quirks_mode(&self, mode: QuirksMode) {
-        self.document.borrow_mut().quirks_mode = mode;
+        self.document_mut().set_quirks_mode(mode);
     }
 
     fn get_document(&self) -> Self::Handle {
-        self.document.borrow().tree.root().id()
+        self.document().id()
     }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> Self::ElemName<'a> {
         Ref::map(self.document.borrow(), |document| {
-            let node = document.tree.get(*target).unwrap().value();
+            let node = document
+                .node(*target)
+                .expect("Node not found for elem_name");
 
             let element = node
                 .as_element()
                 .expect("tried to get the name of a non-Element during parsing");
 
-            &element.name
+            element.name()
         })
     }
 
@@ -55,49 +104,43 @@ impl TreeSink for Sink {
         attrs: Vec<html5ever::Attribute>,
         flags: ElementFlags,
     ) -> Self::Handle {
-        let element_node = Node::Element(ElementData::new(name, attrs));
-        let mut document = self.document.borrow_mut();
+        let attrs = attrs
+            .into_iter()
+            .map(|attr| (attr.name, attr.value))
+            .collect::<HashMap<_, _>>();
 
-        let mut node = document.tree.orphan(element_node);
+        let id = self.insert_node(NodeData::Element(Element { name, attrs }));
 
         if flags.template {
-            node.append(Node::DocumentFragment);
+            let fragment_id = self.insert_node(NodeData::DocumentFragment);
+            self.append_to(id, fragment_id);
         }
 
-        node.id()
+        id
     }
 
     fn create_comment(&self, text: StrTendril) -> Self::Handle {
-        let comment_node = Node::Comment(text);
-
-        self.document.borrow_mut().tree.orphan(comment_node).id()
+        self.insert_node(NodeData::Text(text))
     }
 
     fn create_pi(&self, target: StrTendril, data: StrTendril) -> Self::Handle {
-        let pi_node = Node::ProcessingInstruction { target, data };
-
-        self.document.borrow_mut().tree.orphan(pi_node).id()
+        self.insert_node(NodeData::ProcessingInstruction { target, data })
     }
 
     fn append(&self, parent: &Self::Handle, child: NodeOrText<Self::Handle>) {
-        let mut document = self.document.borrow_mut();
-        let mut parent = document.tree.get_mut(*parent).unwrap();
+        let parent = *parent;
 
         match child {
             NodeOrText::AppendNode(id) => {
-                parent.append_id(id);
+                self.append_to(parent, id);
             }
             NodeOrText::AppendText(text) => {
-                let did_append = parent.last_child().is_some_and(|mut n| match n.value() {
-                    Node::Text(t) => {
-                        t.push_tendril(&text);
-                        true
-                    }
-                    _ => false,
-                });
+                let did_append = self.try_append_text(Some(parent), &text);
 
                 if !did_append {
-                    parent.append(Node::Text(text));
+                    let id = self.insert_node(NodeData::Text(text));
+
+                    self.append_to(parent, id);
                 }
             }
         }
@@ -109,14 +152,7 @@ impl TreeSink for Sink {
         prev_element: &Self::Handle,
         child: NodeOrText<Self::Handle>,
     ) {
-        let has_parent = self
-            .document
-            .borrow()
-            .tree
-            .get(*element)
-            .unwrap()
-            .parent()
-            .is_some();
+        let has_parent = self.node(*element).parent.is_some();
 
         if has_parent {
             self.append_before_sibling(element, child);
@@ -132,67 +168,66 @@ impl TreeSink for Sink {
         public_id: StrTendril,
         system_id: StrTendril,
     ) {
-        let doctype_node = Node::Doctype {
+        let doctype = NodeData::Doctype {
             name,
             public_id,
             system_id,
         };
 
-        self.document
-            .borrow_mut()
-            .tree
-            .root_mut()
-            .append(doctype_node);
+        let root_id = self.document().id();
+        let id = self.insert_node(doctype);
+        self.append_to(root_id, id)
     }
 
     fn get_template_contents(&self, target: &Self::Handle) -> Self::Handle {
-        self.document
-            .borrow()
-            .tree
-            .get(*target)
-            .unwrap()
-            .first_child()
-            .unwrap()
-            .id()
+        *self
+            .node(*target)
+            .children
+            .first()
+            .expect("Template node has no children")
     }
 
     fn same_node(&self, x: &Self::Handle, y: &Self::Handle) -> bool {
         x == y
     }
 
-    fn append_before_sibling(&self, sibling: &Self::Handle, new_node: NodeOrText<Self::Handle>) {
-        let mut document = self.document.borrow_mut();
-        let mut sibling = document.tree.get_mut(*sibling).unwrap();
+    fn append_before_sibling(&self, sibling_id: &Self::Handle, new_node: NodeOrText<Self::Handle>) {
+        let sibling = self.node(*sibling_id);
+        let parent_id = sibling.parent.expect("Sibling has no parent");
+        let mut parent = self.node_mut(parent_id);
 
-        if sibling.parent().is_none() {
-            return;
-        }
+        let sibling_index = parent
+            .children
+            .iter()
+            .position(|child_id| child_id == sibling_id)
+            .expect("Sibling not within parent");
 
-        match new_node {
-            NodeOrText::AppendNode(id) => {
-                sibling.insert_id_before(id);
-            }
+        let child_id = match new_node {
             NodeOrText::AppendText(text) => {
-                let did_append = sibling.prev_sibling().is_some_and(|mut n| match n.value() {
-                    Node::Text(t) => {
-                        t.push_tendril(&text);
-                        true
-                    }
-                    _ => false,
-                });
+                let prev_sibling_id = match sibling_index {
+                    0 => None,
+                    i => Some(parent.children[i - 1]),
+                };
 
-                if !did_append {
-                    sibling.insert_before(Node::Text(text));
+                let did_append = self.try_append_text(prev_sibling_id, &text);
+
+                if did_append {
+                    return;
+                } else {
+                    self.insert_node(NodeData::Text(text))
                 }
             }
-        }
+            NodeOrText::AppendNode(id) => id,
+        };
+
+        let mut prev_sibling = self.node_mut(child_id);
+        prev_sibling.parent = Some(parent_id);
+        parent.children.insert(sibling_index, child_id)
     }
 
     fn add_attrs_if_missing(&self, target: &Self::Handle, attrs: Vec<html5ever::Attribute>) {
-        let mut document = self.document.borrow_mut();
-        let mut node = document.tree.get_mut(*target).unwrap();
+        let mut node = self.node_mut(*target);
         let element = node
-            .value()
             .as_element_mut()
             .expect("tried to set attrs on non-Element in HTML parsing");
 
@@ -202,20 +237,22 @@ impl TreeSink for Sink {
     }
 
     fn remove_from_parent(&self, target: &Self::Handle) {
-        self.document
-            .borrow_mut()
-            .tree
-            .get_mut(*target)
-            .unwrap()
-            .detach();
+        let mut node = self.node_mut(*target);
+        let parent = node.parent.take().expect("Node has no parent");
+
+        self.node_mut(parent)
+            .children
+            .retain(|child_id| child_id != target);
     }
 
     fn reparent_children(&self, node: &Self::Handle, new_parent: &Self::Handle) {
-        self.document
-            .borrow_mut()
-            .tree
-            .get_mut(*new_parent)
-            .unwrap()
-            .reparent_from_id_append(*node);
+        let new_parent = *new_parent;
+        let children = std::mem::take(&mut self.node_mut(*node).children);
+
+        for child in children.iter() {
+            self.node_mut(*child).parent = Some(new_parent)
+        }
+
+        self.node_mut(new_parent).children.extend(&children);
     }
 }

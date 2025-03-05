@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 
 pub fn parse_html_document(input: &str) -> Document {
-    let document = RefCell::from(Document::default());
+    let document = RefCell::from(Document::new());
     let sink = Sink { document };
 
     let tokenizer = Tokenizer::new(sink);
