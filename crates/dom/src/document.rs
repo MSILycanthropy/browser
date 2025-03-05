@@ -1,6 +1,14 @@
-use html5ever::interface::QuirksMode::{self, NoQuirks};
+use std::io::Error;
 
-use crate::node::{Node, NodeArena, NodeData, NodeId};
+use html5ever::{
+    interface::QuirksMode::{self, NoQuirks},
+    serialize::{Serialize, SerializeOpts, Serializer, TraversalScope, serialize},
+};
+
+use crate::{
+    node::{Node, NodeArena, NodeData, NodeId},
+    traversal::{Edge, TreeTraversal},
+};
 
 pub struct Document {
     id: Option<NodeId>,
@@ -21,6 +29,13 @@ impl Document {
         let id = instance.insert_node(NodeData::Document);
         instance.id = Some(id);
         instance
+    }
+
+    pub fn html(&self) -> String {
+        let options = SerializeOpts::default();
+        let mut buffer = Vec::new();
+        serialize(&mut buffer, self, options).unwrap();
+        String::from_utf8(buffer).unwrap()
     }
 
     pub fn insert_node(&mut self, node_data: NodeData) -> NodeId {
@@ -71,5 +86,48 @@ impl Document {
             .expect("Parent is not in the DOM");
 
         node.children.push(new_child_id);
+    }
+}
+
+impl Serialize for Document {
+    fn serialize<S>(&self, serializer: &mut S, traversal_scope: TraversalScope) -> Result<(), Error>
+    where
+        S: Serializer,
+    {
+        let root = self.root();
+
+        for edge in root.traverse() {
+            match edge {
+                Edge::Open(node) => {
+                    if node.id == root.id && traversal_scope == TraversalScope::ChildrenOnly(None) {
+                        continue;
+                    }
+
+                    match node.data() {
+                        NodeData::Doctype { name, .. } => serializer.write_doctype(name)?,
+                        NodeData::Comment(comment) => serializer.write_comment(comment)?,
+                        NodeData::Text(text) => serializer.write_text(text)?,
+                        NodeData::Element(element) => {
+                            let attributes =
+                                element.attrs.iter().map(|(key, value)| (key, &value[..]));
+
+                            serializer.start_elem(element.name.clone(), attributes)?;
+                        }
+                        _ => (),
+                    }
+                }
+                Edge::Close(node) => {
+                    if node.id == root.id && traversal_scope == TraversalScope::ChildrenOnly(None) {
+                        continue;
+                    }
+
+                    if let NodeData::Element(element) = node.data() {
+                        serializer.end_elem(element.name.clone())?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }

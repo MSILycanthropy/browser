@@ -1,7 +1,4 @@
-use std::{
-    any::{Any, TypeId},
-    collections::HashMap,
-};
+use std::collections::HashMap;
 
 use html5ever::{QualName, tendril::StrTendril};
 
@@ -31,6 +28,14 @@ impl Node {
             children: vec![],
             parent: None,
         }
+    }
+
+    pub fn tree(&self) -> &NodeArena {
+        unsafe { &*self.tree }
+    }
+
+    pub fn lookup(&self, id: NodeId) -> &Self {
+        self.tree().get(id).expect("Node does not exist in tree")
     }
 
     pub fn data(&self) -> &NodeData {
