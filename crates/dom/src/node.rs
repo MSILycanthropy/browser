@@ -8,6 +8,7 @@ new_key_type! { pub struct NodeId; }
 
 pub type NodeArena = SlotMap<NodeId, Node>;
 
+#[derive(PartialEq, Debug)]
 pub struct Node {
     pub id: NodeId,
 
@@ -59,8 +60,30 @@ impl Node {
             _ => None,
         }
     }
+
+    pub fn index_as_child(&self) -> usize {
+        self.parent
+            .map(|p| self.lookup(p))
+            .and_then(|node| node.children.iter().position(|c| c == &self.id))
+            .unwrap_or(0)
+    }
+
+    pub fn nth_prev_sibling_id(&self, n: usize) -> Option<&NodeId> {
+        let parent_id = self.parent?;
+        let parent = self.lookup(parent_id);
+
+        parent.children.get(self.index_as_child() - n)
+    }
+
+    pub fn nth_next_sibling_id(&self, n: usize) -> Option<&NodeId> {
+        let parent_id = self.parent?;
+        let parent = self.lookup(parent_id);
+
+        parent.children.get(self.index_as_child() + n)
+    }
 }
 
+#[derive(PartialEq, Debug)]
 pub enum NodeData {
     Document,
     DocumentFragment,
@@ -78,6 +101,7 @@ pub enum NodeData {
     Element(Element),
 }
 
+#[derive(PartialEq, Debug)]
 pub struct Element {
     pub name: QualName,
     pub attrs: HashMap<QualName, StrTendril>,
