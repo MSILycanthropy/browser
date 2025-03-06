@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/browser", "crates/dom", "crates/html"]
+members = ["crates/browser", "crates/dom", "crates/html", "crates/style"]
 
 [workspace.dependencies]
+style = { git = "https://github.com/servo/stylo", rev = "0190fff", package = "style" }
 html5ever = "0.29.1"
 string_cache = "0.8.8"
 
