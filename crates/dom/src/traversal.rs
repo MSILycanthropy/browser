@@ -9,25 +9,23 @@ pub(crate) trait TreeTraversal {
     fn traverse(&self) -> Traversal;
 }
 
-impl TreeTraversal for Node {
+impl TreeTraversal for Document {
     fn traverse(&self) -> Traversal {
         Traversal::new(self)
     }
 }
 
-impl TreeTraversal for Document {
-    fn traverse(&self) -> Traversal {
-        Traversal::new(self.root())
-    }
-}
-
 pub(crate) struct Traversal<'dom> {
+    document: &'dom Document,
     stack: Vec<(&'dom Node, bool)>,
 }
 
 impl<'dom> Traversal<'dom> {
-    fn new(root: &'dom Node) -> Self {
+    fn new(document: &'dom Document) -> Self {
+        let root = document.root();
+
         Self {
+            document,
             stack: vec![(root, false)],
         }
     }
@@ -45,7 +43,7 @@ impl<'dom> Iterator for Traversal<'dom> {
             self.stack.push((node, true));
 
             for child_id in node.children.iter().rev() {
-                let child = node.lookup(*child_id);
+                let child = self.document.node(*child_id)?;
 
                 self.stack.push((child, false));
             }

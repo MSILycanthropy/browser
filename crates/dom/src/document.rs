@@ -39,9 +39,7 @@ impl Document {
     }
 
     pub fn insert_node(&mut self, node_data: NodeData) -> NodeId {
-        let tree = self.nodes.as_mut() as *mut NodeArena;
-        self.nodes
-            .insert_with_key(|key| Node::new(key, node_data, tree))
+        self.nodes.insert_with_key(|key| Node::new(key, node_data))
     }
 
     pub fn id(&self) -> NodeId {
@@ -96,7 +94,7 @@ impl Serialize for Document {
     {
         let root = self.root();
 
-        for edge in root.traverse() {
+        for edge in self.traverse() {
             match edge {
                 Edge::Open(node) => {
                     if node.id == root.id && traversal_scope == TraversalScope::ChildrenOnly(None) {

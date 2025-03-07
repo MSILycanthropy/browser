@@ -6,13 +6,17 @@ use slotmap::{SlotMap, new_key_type};
 
 new_key_type! { pub struct NodeId; }
 
+impl NodeId {
+    pub fn ffi(&self) -> usize {
+        self.0.as_ffi() as usize
+    }
+}
+
 pub type NodeArena = SlotMap<NodeId, Node>;
 
 #[derive(PartialEq, Debug)]
 pub struct Node {
     pub id: NodeId,
-
-    tree: *mut NodeArena,
 
     data: NodeData,
 
@@ -21,22 +25,13 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: NodeId, data: NodeData, tree: *mut NodeArena) -> Self {
+    pub fn new(id: NodeId, data: NodeData) -> Self {
         Self {
             id,
             data,
-            tree,
             children: vec![],
             parent: None,
         }
-    }
-
-    pub fn tree(&self) -> &NodeArena {
-        unsafe { &*self.tree }
-    }
-
-    pub fn lookup(&self, id: NodeId) -> &Self {
-        self.tree().get(id).expect("Node does not exist in tree")
     }
 
     pub fn data(&self) -> &NodeData {
@@ -59,27 +54,6 @@ impl Node {
             NodeData::Element(element) => Some(element),
             _ => None,
         }
-    }
-
-    pub fn index_as_child(&self) -> usize {
-        self.parent
-            .map(|p| self.lookup(p))
-            .and_then(|node| node.children.iter().position(|c| c == &self.id))
-            .unwrap_or(0)
-    }
-
-    pub fn nth_prev_sibling_id(&self, n: usize) -> Option<&NodeId> {
-        let parent_id = self.parent?;
-        let parent = self.lookup(parent_id);
-
-        parent.children.get(self.index_as_child() - n)
-    }
-
-    pub fn nth_next_sibling_id(&self, n: usize) -> Option<&NodeId> {
-        let parent_id = self.parent?;
-        let parent = self.lookup(parent_id);
-
-        parent.children.get(self.index_as_child() + n)
     }
 }
 
