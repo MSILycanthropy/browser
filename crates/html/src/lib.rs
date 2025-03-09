@@ -1,7 +1,10 @@
+mod dom;
 mod sink;
 
-use crate::sink::Sink;
-use dom::{Document, NodeId};
+pub use html5ever;
+
+pub use crate::sink::GenericSink;
+pub use dom::{DOMNode, DOMTree};
 use html5ever::{
     Parser,
     tendril::TendrilSink,
@@ -11,13 +14,13 @@ use html5ever::{
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 
-pub fn parse_html_document(input: &str) -> Document {
-    let document = RefCell::from(Document::new());
-    let sink = Sink { document };
+pub fn parse_html_document<T: DOMTree>(dom_tree: T, input: &str) -> T {
+    let dom_tree = RefCell::from(dom_tree);
+    let sink = GenericSink { dom_tree };
 
     let tokenizer = Tokenizer::new(sink);
 
-    let parser = Parser::<Sink> {
+    let parser = Parser::<GenericSink<T>> {
         tokenizer: tokenizer.inner,
         input_buffer: BufferQueue::default(),
     };
@@ -25,12 +28,12 @@ pub fn parse_html_document(input: &str) -> Document {
     parser.one(input)
 }
 
-pub(crate) struct Tokenizer {
-    pub inner: HtmlTokenizer<TreeBuilder<NodeId, Sink>>,
+pub(crate) struct Tokenizer<T: DOMTree> {
+    pub inner: HtmlTokenizer<TreeBuilder<<<T as DOMTree>::Node as DOMNode>::Id, GenericSink<T>>>,
 }
 
-impl Tokenizer {
-    pub fn new(sink: Sink) -> Self {
+impl<T: DOMTree> Tokenizer<T> {
+    pub fn new(sink: GenericSink<T>) -> Self {
         let tree_builder = TreeBuilder::new(sink, TreeBuilderOpts::default());
 
         Self {
@@ -39,15 +42,15 @@ impl Tokenizer {
     }
 }
 
-impl Deref for Tokenizer {
-    type Target = HtmlTokenizer<TreeBuilder<NodeId, Sink>>;
+impl<T: DOMTree> Deref for Tokenizer<T> {
+    type Target = HtmlTokenizer<TreeBuilder<<<T as DOMTree>::Node as DOMNode>::Id, GenericSink<T>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl DerefMut for Tokenizer {
+impl<T: DOMTree> DerefMut for Tokenizer<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
