@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/browser", "crates/dom", "crates/html", "crates/style"]
+members = ["crates/browser", "crates/html", "crates/style"]
 
 [workspace.dependencies]
 style = { git = "https://github.com/servo/stylo", rev = "0190fff", package = "style" }

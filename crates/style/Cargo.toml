@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 style = { workspace = true, features = ["servo"] }
-dom = { path = "../dom" }
 
 [lints]
 workspace = true
