@@ -10,6 +10,12 @@ pub trait DOMTree: std::fmt::Debug {
 
     fn root_id(&self) -> <<Self as DOMTree>::Node as DOMNode>::Id;
 
+    fn root(&self) -> &Self::Node {
+        let id = self.root_id();
+
+        self.node(id).expect("No root node found")
+    }
+
     fn node(&self, id: <<Self as DOMTree>::Node as DOMNode>::Id) -> Option<&Self::Node>;
 
     fn node_mut(&mut self, id: <<Self as DOMTree>::Node as DOMNode>::Id)
@@ -41,8 +47,18 @@ pub trait DOMTree: std::fmt::Debug {
     ) -> <<Self as DOMTree>::Node as DOMNode>::Id;
 }
 
+pub enum SerializableNode<'dom> {
+    Doctype(&'dom StrTendril),
+    Comment(&'dom StrTendril),
+    Text(&'dom StrTendril),
+    Element(&'dom QualName, &'dom Vec<Attribute>),
+    None,
+}
+
 pub trait DOMNode {
     type Id: Clone + Copy + Eq + std::fmt::Debug;
+
+    fn id(&self) -> Self::Id;
 
     fn parent(&self) -> Option<Self::Id>;
 
@@ -69,4 +85,6 @@ pub trait DOMNode {
     fn try_merge_attrs(&mut self, attrs: Vec<Attribute>) -> bool;
 
     fn element_name(&self) -> Option<&QualName>;
+
+    fn serializable_data(&self) -> SerializableNode;
 }

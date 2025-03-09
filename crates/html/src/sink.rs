@@ -52,9 +52,7 @@ impl<T: DOMTree> GenericSink<T> {
         text: &StrTendril,
     ) -> bool {
         let Some(to_id) = to_id else { return false };
-        dbg!("try append");
         let mut to = self.node_mut(to_id);
-        dbg!("after try append");
 
         to.try_append_to_text_node(text)
     }

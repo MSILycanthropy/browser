@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
 use html::{
-    DOMNode, DOMTree,
+    DOMNode, DOMTree, SerializableNode,
     html5ever::{Attribute, QualName, interface::QuirksMode, tendril::StrTendril},
-    parse_html_document,
+    parse_html_document, serialize_dom_tree,
+    traversal::TreeTraversal,
 };
 
 const HTML: &str = r#"
@@ -41,7 +42,7 @@ impl Document {
     fn insert_node(&mut self, data: NodeData) -> usize {
         let next_index = self.nodes.len() + 1;
 
-        self.nodes.push(Node::new(data));
+        self.nodes.push(Node::new(next_index, data));
 
         next_index
     }
@@ -106,6 +107,7 @@ impl DOMTree for Document {
 
 #[derive(Debug)]
 struct Node {
+    id: usize,
     data: NodeData,
 
     parent: Option<usize>,
@@ -113,8 +115,9 @@ struct Node {
 }
 
 impl Node {
-    fn new(data: NodeData) -> Self {
+    fn new(id: usize, data: NodeData) -> Self {
         Self {
+            id,
             data,
             parent: None,
             children: vec![],
@@ -124,6 +127,10 @@ impl Node {
 
 impl DOMNode for Node {
     type Id = usize;
+
+    fn id(&self) -> usize {
+        self.id
+    }
 
     fn append_child(&mut self, id: Self::Id) {
         self.children.push(id);
@@ -196,6 +203,16 @@ impl DOMNode for Node {
             _ => false,
         }
     }
+
+    fn serializable_data(&self) -> SerializableNode {
+        match &self.data {
+            NodeData::Doctype { name, .. } => SerializableNode::Doctype(&name),
+            NodeData::Comment(comment) => SerializableNode::Comment(&comment),
+            NodeData::Text(text) => SerializableNode::Text(&text),
+            NodeData::Element { name, attrs } => SerializableNode::Element(&name, &attrs),
+            _ => SerializableNode::None,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -219,9 +236,15 @@ pub enum NodeData {
     },
 }
 
-fn main() {
+impl TreeTraversal for Document {}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let document = Document::new();
     let document = parse_html_document(document, HTML);
 
-    dbg!(document);
+    let html = serialize_dom_tree(document)?;
+
+    println!("{}", html);
+
+    Ok(())
 }
