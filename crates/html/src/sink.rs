@@ -129,7 +129,8 @@ impl<T: DOMTree> TreeSink for GenericSink<T> {
                     .append_child(child_id);
             }
             NodeOrText::AppendText(text) => {
-                let did_append = self.try_append_to_text_node(Some(parent_id), &text);
+                let last_child_id = self.node(parent_id).children().last().copied();
+                let did_append = self.try_append_to_text_node(last_child_id, &text);
 
                 if !did_append {
                     let child_id = self.dom_tree_mut().create_text_node(text);
