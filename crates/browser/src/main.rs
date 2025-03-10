@@ -3,18 +3,12 @@ use std::collections::HashSet;
 use html::{
     DOMNode, DOMTree, SerializableNode,
     html5ever::{Attribute, QualName, interface::QuirksMode, tendril::StrTendril},
-    parse_html_document, serialize_dom_tree,
     traversal::TreeTraversal,
 };
-
 const HTML: &str = r#"
-<!DOCTYPE html>
-<html>
-<body>
-<h1>My First Heading</h1>
-<p>My first paragraph.</p>
-</body>
-</html>
+    <div>
+        TEST
+    </div>
 "#;
 
 #[derive(Debug)]
@@ -26,19 +20,21 @@ struct Document {
     quirks_mode: QuirksMode,
 }
 
-impl Document {
-    fn new() -> Self {
+impl Default for Document {
+    fn default() -> Self {
         let mut instance = Self {
             id: 1,
             nodes: vec![],
             quirks_mode: QuirksMode::NoQuirks,
         };
 
-        instance.insert_node(NodeData::Document);
+        instance.insert_node(NodeData::DocumentFragment);
 
         return instance;
     }
+}
 
+impl Document {
     fn insert_node(&mut self, data: NodeData) -> usize {
         let next_index = self.nodes.len() + 1;
 
@@ -239,12 +235,9 @@ pub enum NodeData {
 impl TreeTraversal for Document {}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let document = Document::new();
-    let document = parse_html_document(document, HTML);
+    let document = Document::parse(HTML, Default::default());
 
-    let html = serialize_dom_tree(document)?;
-
-    println!("{}", html);
+    println!("{}", document.serialize()?);
 
     Ok(())
 }
