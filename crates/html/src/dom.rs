@@ -1,7 +1,22 @@
-use html5ever::{Attribute, QualName, interface::QuirksMode, tendril::StrTendril};
-use std::borrow::Cow;
+use html5ever::{
+    Attribute, QualName,
+    interface::QuirksMode,
+    serialize::{HtmlSerializer, SerializeOpts, Serializer},
+    tendril::{StrTendril, TendrilSink},
+};
+use std::{borrow::Cow, cell::RefCell, error::Error};
 
-pub trait DOMTree: std::fmt::Debug {
+use crate::{
+    GenericSink,
+    traversal::{Edge, TreeTraversal},
+};
+
+#[derive(Default)]
+pub struct ParserOpts {
+    fragment: Option<(QualName, Vec<Attribute>)>,
+}
+
+pub trait DOMTree: Default + std::fmt::Debug {
     type Node: DOMNode;
 
     fn handle_parser_error(&self, msg: Cow<'static, str>);
@@ -45,6 +60,74 @@ pub trait DOMTree: std::fmt::Debug {
         name: QualName,
         attrs: Vec<Attribute>,
     ) -> <<Self as DOMTree>::Node as DOMNode>::Id;
+
+    fn parse(input: &str, opts: ParserOpts) -> Self {
+        Self::parse_with(|| Self::default(), input, opts)
+    }
+
+    fn parse_with<F>(factory: F, input: &str, opts: ParserOpts) -> Self
+    where
+        F: FnOnce() -> Self,
+    {
+        let instance = factory();
+        let dom_tree = RefCell::from(instance);
+        let sink = GenericSink { dom_tree };
+
+        let parser = match opts.fragment {
+            Some((name, attrs)) => {
+                html5ever::driver::parse_fragment(sink, Default::default(), name, attrs)
+            }
+            None => html5ever::driver::parse_document(sink, Default::default()),
+        };
+
+        parser.one(input)
+    }
+
+    fn serialize(&self) -> Result<String, Box<dyn Error>>
+    where
+        Self: TreeTraversal,
+    {
+        let options = SerializeOpts::default();
+        let buffer = Vec::new();
+        let mut serializer = HtmlSerializer::new(buffer, options);
+
+        let root_id = self.root_id();
+
+        for edge in self.traverse() {
+            match edge {
+                Edge::Open(node) => {
+                    if node.id() == root_id {
+                        continue;
+                    }
+
+                    match node.serializable_data() {
+                        SerializableNode::Doctype(name) => serializer.write_doctype(name)?,
+                        SerializableNode::Comment(comment) => serializer.write_comment(comment)?,
+                        SerializableNode::Text(text) => serializer.write_text(text)?,
+                        SerializableNode::Element(name, attrs) => {
+                            let attributes = attrs.iter().map(|attr| (&attr.name, &attr.value[..]));
+
+                            serializer.start_elem(name.clone(), attributes)?;
+                        }
+                        _ => (),
+                    }
+                }
+                Edge::Close(node) => {
+                    if node.id() == root_id {
+                        continue;
+                    }
+
+                    if let SerializableNode::Element(name, ..) = node.serializable_data() {
+                        serializer.end_elem(name.clone())?;
+                    }
+                }
+            }
+        }
+
+        let str = String::from_utf8(serializer.writer)?;
+
+        Ok(str)
+    }
 }
 
 pub enum SerializableNode<'dom> {
